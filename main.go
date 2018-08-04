@@ -13,13 +13,16 @@ import (
 )
 
 const (
-	flagDatastore   = "datastore"
+	flagDatastore   = "data"
+	flagAccount     = "p"
+	fileAccount     = "accounts"
+	fileLedger      = "ledger"
 	categoryAccount = "Account"
 	categoryChain   = "Blockchain"
 )
 
 func createAccount(c *cli.Context) {
-	accountFolder := path.Join(c.GlobalString(flagDatastore), "accounts")
+	accountFolder := path.Join(c.GlobalString(flagDatastore), fileAccount)
 	// Ensure folder exists
 	_, err := os.Stat(accountFolder)
 	if err != nil && os.IsNotExist(err) {
@@ -64,7 +67,8 @@ func viewAccountHistory(c *cli.Context) {
 }
 
 func initializeChain(c *cli.Context) {
-
+	ledgerFile := path.Join(c.GlobalString(flagDatastore), fileLedger)
+	creatorAccount := path.Join(c.GlobalString(flagDatastore), c.String(flagAccount))
 }
 
 func inspectBlocks(c *cli.Context) {
