@@ -6,6 +6,7 @@ import (
 	"path"
 	"syscall"
 
+	"github.com/lnsp/txledger/ledger"
 	"github.com/lnsp/txledger/ledger/account"
 	"github.com/lnsp/txledger/ledger/account/container"
 	"github.com/micro/cli"
@@ -13,8 +14,12 @@ import (
 )
 
 const (
-	flagDatastore   = "data"
-	flagAccount     = "p"
+	flagForce      = "force"
+	flagDatastore  = "data"
+	flagAccount    = "account"
+	flagChain      = "chain"
+	flagComplexity = "complexity"
+
 	fileAccount     = "accounts"
 	fileLedger      = "ledger"
 	categoryAccount = "Account"
@@ -67,8 +72,50 @@ func viewAccountHistory(c *cli.Context) {
 }
 
 func initializeChain(c *cli.Context) {
-	ledgerFile := path.Join(c.GlobalString(flagDatastore), fileLedger)
-	creatorAccount := path.Join(c.GlobalString(flagDatastore), c.String(flagAccount))
+	datapath := c.GlobalString(flagDatastore)
+	_, err := os.Stat(datapath)
+	if err != nil && os.IsNotExist(err) {
+		err := os.MkdirAll(datapath, 0755)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Could not create datapath")
+			os.Exit(1)
+		}
+	}
+	ledgerPath := path.Join(datapath, fileLedger)
+	_, err = os.Stat(ledgerPath)
+	if err == nil && !c.Bool(flagForce) {
+		fmt.Fprintf(os.Stderr, "Chain already exists, override with -%s flag\n", flagForce)
+		os.Exit(1)
+	}
+	accountPath := path.Join(datapath, fileAccount, c.String(flagAccount)+".json")
+	account, err := container.ReadFromFile(accountPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Failed to read account container:", err)
+		os.Exit(1)
+	}
+	fmt.Fprint(os.Stdout, "Please enter the passphrase: ")
+	passphrase, err := terminal.ReadPassword(int(syscall.Stdin))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Could not read passphrase")
+		os.Exit(1)
+	}
+	fmt.Fprintln(os.Stdout)
+	privateKey, err := account.Unlock(passphrase)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Could not unlock account")
+		os.Exit(1)
+	}
+	id, complexity := uint64(c.Int(flagChain)), uint64(c.Int(flagComplexity))
+	fmt.Fprintf(os.Stdout, "Init chain with ID %d and start complexity %d\n", id, complexity)
+	chain := ledger.New(id)
+	chain.Init(complexity, privateKey)
+	ledgerFile, err := os.OpenFile(ledgerPath, os.O_CREATE|os.O_RDWR, 0755)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Could not open ledger file: ", err)
+		os.Exit(1)
+	}
+	chain.WriteTo(ledgerFile)
+	ledgerFile.Close()
 }
 
 func inspectBlocks(c *cli.Context) {
@@ -125,6 +172,24 @@ func main() {
 			Category: categoryChain,
 			Usage:    "initialize a new blockchain",
 			Action:   initializeChain,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  flagAccount,
+					Usage: "private account for coinbase TX",
+				},
+				cli.BoolFlag{
+					Name:  flagForce,
+					Usage: "override all existing data",
+				},
+				cli.IntFlag{
+					Name:  flagChain,
+					Usage: "unique chain identifier",
+				},
+				cli.IntFlag{
+					Name:  flagComplexity,
+					Usage: "starting complexity for genesis block",
+				},
+			},
 		},
 		{
 			Name:     "inspect",
